@@ -1,48 +1,23 @@
-# Develop a code to illustrate a secure socket connection between client and server.
+#!/usr/bin/python3
 
 import socket
 import ssl
-import os
-import time
 
+host_addr = '127.0.0.1'
+host_port = 8082
+server_sni_hostname = 'raksh'
+server_cert = 'server.crt'
+client_cert = 'client.crt'
+client_key = 'client.key'
 
-sslServerIP = "127.0.0.1"
-sslServerPort = 15001
+context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=server_cert)
+context.load_cert_chain(certfile=client_cert, keyfile=client_key)
 
-
-context = ssl.SSLContext()
-context.verify_mode = ssl.CERT_REQUIRED
-
-
-context.load_verify_locations("./DemoCA.pem")
-context.load_cert_chain(certfile="./DemoClt.crt", keyfile="./DemoClt.key")
-
-clientSocket = socket.socket()
-secureClientSocket = context.wrap_socket(clientSocket)
-secureClientSocket.connect((sslServerIP, sslServerPort))
-
-server_cert = secureClientSocket.getpeercert()
-subject = dict(item[0] for item in server_cert['subject'])
-commonName = subject['commonName']
-
-if not server_cert:
-    raise Exception("Unable to retrieve server certificate")
-
-if commonName != 'DemoSvr':
-    raise Exception("Incorrect common name in server certificate")
-
-notAfterTimestamp = ssl.cert_time_to_seconds(server_cert['notAfter'])
-notBeforeTimestamp = ssl.cert_time_to_seconds(server_cert['notBefore'])
-currentTimeStamp = time.time()
-
-if currentTimeStamp > notAfterTimestamp:
-    raise Exception("Expired server certificate")
-
-if currentTimeStamp < notBeforeTimestamp:
-    raise Exception("Server certificate not yet active")
-
-msgReceived = secureClientSocket.recv(1024)
-print("Secure communication received from server:%s" % msgReceived.decode())
-
-secureClientSocket.close()
-clientSocket.close()
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+conn = context.wrap_socket(s, server_side=False, server_hostname=server_sni_hostname)
+conn.connect((host_addr, host_port))
+print("SSL established. Peer: {}".format(conn.getpeercert()))
+print("Sending: 'Hello, world!")
+conn.send(b"Hello, world!")
+print("Closing connection")
+conn.close()

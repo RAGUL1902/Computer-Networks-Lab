@@ -1,40 +1,42 @@
-# Develop a code to illustrate a secure socket connection between client and server.
+#!/usr/bin/python3
 
-import ssl
 import socket
-import datetime
-import time
+from socket import AF_INET, SOCK_STREAM, SO_REUSEADDR, SOL_SOCKET, SHUT_RDWR
+import ssl
 
-ipAddress = "127.0.0.1"
-port = 15001
+listen_addr = '127.0.0.1'
+listen_port = 8082
+server_cert = 'server.crt'
+server_key = 'server.key'
+client_certs = 'client.crt'
 
-serverSocket = socket.socket()
-serverSocket.bind((ipAddress, port))
+context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+context.verify_mode = ssl.CERT_REQUIRED
+context.load_cert_chain(certfile=server_cert, keyfile=server_key)
+context.load_verify_locations(cafile=client_certs)
 
-serverSocket.listen()
-print("Server listening:")
+bindsocket = socket.socket()
+bindsocket.bind((listen_addr, listen_port))
+bindsocket.listen(5)
 
-while(True):
-    (clientConnection, clientAddress) = serverSocket.accept()
-    secureClientSocket = ssl.wrap_socket(clientConnection, server_side=True, ca_certs="./DemoCA.pem", certfile="./DemoSvr.crt",
-                                         keyfile="./DemoSvr.key", cert_reqs=ssl.CERT_REQUIRED, ssl_version=ssl.PROTOCOL_TLSv1_2)
-
-    client_cert = secureClientSocket.getpeercert()
-    clt_subject = dict(item[0] for item in client_cert['subject'])
-    clt_commonName = clt_subject['commonName']
-    if not client_cert:
-        raise Exception("Unable to get the certificate from the client")
-
-    if clt_commonName != 'DemoClt':
-        raise Exception("Incorrect common name in client certificate")
-    t1 = ssl.cert_time_to_seconds(client_cert['notBefore'])
-    t2 = ssl.cert_time_to_seconds(client_cert['notAfter'])
-    ts = time.time()
-    if ts < t1:
-        raise Exception("Client certificate not yet active")
-    if ts > t2:
-        raise Exception("Expired client certificate")
-    serverTimeNow = "%s" % datetime.datetime.now()
-    secureClientSocket.send(serverTimeNow.encode())
-    print("Securely sent %s to %s" % (serverTimeNow, clientAddress))
-    secureClientSocket.close()
+while True:
+    print("Waiting for client")
+    newsocket, fromaddr = bindsocket.accept()
+    print("Client connected: {}:{}".format(fromaddr[0], fromaddr[1]))
+    conn = context.wrap_socket(newsocket, server_side=True)
+    print("SSL established. Peer: {}".format(conn.getpeercert()))
+    buf = b''  # Buffer to hold received client data
+    try:
+        while True:
+            data = conn.recv(4096)
+            if data:
+                # Client sent us data. Append to buffer
+                buf += data
+            else:
+                # No more data from client. Show buffer and close connection.
+                print("Received:", buf)
+                break
+    finally:
+        print("Closing connection")
+        conn.shutdown(socket.SHUT_RDWR)
+        conn.close()
